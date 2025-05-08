@@ -1,0 +1,178 @@
+name: Test and Deploy Gaokao-RAG
+
+on:
+  push:
+    branches: [ main, master, develop ] # 根据您的主要分支调整
+    tags:
+      - 'v*' # 仅当推送 v 开头的标签时触发 deploy
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  pytest:
+    name: Run Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test] # 假设您在 pyproject.toml 中定义了 [project.optional-dependencies] test (包含 pytest)
+          # 如果没有，则使用: pip install -e . pytest
+
+      - name: Run tests
+        run: pytest -q tests/ # 假设测试位于 tests/ 目录
+
+  deploy:
+    name: Build and Deploy to Production
+    needs: pytest
+    # 仅当是推送标签事件，并且标签名以 'v' 开头时运行
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions: # 需要权限来与 Docker 仓库交互 (例如 GHCR)
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub (或者您的其他 Registry)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }} # 替换: Docker Hub 用户名 (或您 Registry 的用户名)
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}   # 替换: Docker Hub 访问令牌 (或您 Registry 的密码/令牌)
+          # registry: registry.example.com # 如果不是 Docker Hub，请指定您的 Registry 地址
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: YOUR_DOCKER_USERNAME/gaokao-rag # 替换: 您的 Docker 用户名/组织名 和 镜像名
+          # 例如: ghcr.io/YOUR_GITHUB_USERNAME/gaokao-rag
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Dockerfile 应该在项目根目录
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to production via SSH
+        uses: appleboy/ssh-action@master # 使用一个流行的 SSH Action
+        with:
+          host: YOUR_PROD_SERVER_HOST # 替换: 您的生产服务器 IP 或域名
+          username: ${{ secrets.PROD_SSH_USER }}    # 替换: GitHub Secret 中的 SSH 用户名
+          key: ${{ secrets.PROD_SSH_KEY }}         # 替换: GitHub Secret 中的 SSH 私钥内容
+          port: ${{ secrets.PROD_SSH_PORT || 22 }} # 替换: GitHub Secret 中的 SSH 端口 (默认22)
+          script: |
+            set -e # 如果任何命令失败则退出脚本
+            echo "Deploying version: ${{ github.ref_name }}"
+            cd /srv/gaokao-rag # 替换: 您在服务器上部署项目的路径
+            
+            # 从您的 Registry 拉取镜像
+            # 使用 steps.meta.outputs.tags 中的第一个标签，通常是类似 "v1.0.0"
+            # 或者，如果您希望总是使用 latest 或特定格式，可以硬编码或从元数据中选择
+            IMAGE_TAG=$(echo '${{ steps.meta.outputs.tags }}' | cut -d',' -f1) # 获取第一个标签
+            docker pull $IMAGE_TAG
+            
+            echo "Restarting Docker Compose service..."
+            # 假设您的 docker-compose.yml 文件位于 /srv/gaokao-rag/docker-compose.yml
+            # 并且您想更新并重启名为 'ragmath_service' (或您在 compose 文件中定义的服务名) 的服务
+            # 您可能需要在 docker-compose.yml 中使用拉取的镜像标签
+            # 例如，在 docker-compose.yml 中设置 image: YOUR_DOCKER_USERNAME/gaokao-rag:${RAG_VERSION}
+            # 然后在这里设置 RAG_VERSION 环境变量
+            export RAG_IMAGE=$IMAGE_TAG # 将镜像名传递给 compose 文件
+            docker compose -f docker-compose.yml up -d # --force-recreate ragmath_service
+            # 上面的命令会重启所有服务。如果只想重启特定服务并使用新镜像：
+            # 1. 确保 docker-compose.yml 中的 image 指令使用了变量，如 image: myrepo/myimage:${APP_VERSION}
+            # 2. docker compose pull ragmath_service # 拉取服务的新镜像
+            # 3. APP_VERSION=${{ github.ref_name }} docker compose up -d --no-deps ragmath_service # 重启服务
+
+            echo "Deployment of ${{ github.ref_name }} complete."
+
+# ---
+# GitHub Actions 工作流程说明:
+#
+# 此工作流程 ('.github/workflows/test.yml') 设计用于自动化 "Gaokao-RAG" 项目的测试和部署。
+#
+# 触发条件:
+#   - Push: 当代码被推送到 'main', 'master', 或 'develop' 分支时，以及当一个以 'v' 开头的标签 (如 v1.0.0) 被推送时。
+#   - Pull Request: 当有 Pull Request 指向 'main', 'master', 或 'develop' 分支时。
+#
+# 任务 (Jobs):
+#
+# 1. pytest (任务名: Run Pytest):
+#    - 目的: 自动运行单元测试和集成测试。
+#    - 触发: 在所有指定的 push 和 pull_request 事件上。
+#    - 步骤:
+#      1. Checkout code: 从仓库拉取最新代码。
+#      2. Set up Python: 初始化 Python 3.11 环境。
+#      3. Install dependencies:
+#         - 升级 pip。
+#         - 安装项目依赖。推荐的方式是在 'pyproject.toml' 中定义一个 'test' 附加依赖组:
+#           [project.optional-dependencies]
+#           test = ["pytest", "pytest-cov"]
+#           然后使用 'pip install -e .[test]'。如果未如此配置，则直接 'pip install -e . pytest'。
+#      4. Run tests: 执行位于 'tests/' 目录下的所有 pytest 测试用例 (安静模式 '-q')。
+#    - 影响: 如果测试失败，此任务将标记为失败。对于 Pull Request，这会在界面上显示一个红叉，
+#      提醒审查者代码可能存在问题，从而避免将有缺陷的代码合并到主要分支。
+#
+# 2. deploy (任务名: Build and Deploy to Production):
+#    - 目的: 自动构建 Docker 镜像，将其推送到镜像仓库，并通过 SSH 部署到生产服务器。
+#    - 触发:
+#      - `needs: pytest`: 仅当 'pytest' 任务成功完成后才能开始。
+#      - `if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')`:
+#        仅当事件类型为 "推送 (push)" 并且被推送的引用 (ref) 是一个以 "v" 开头的标签 (tag) 时。
+#        这意味着只有在您明确创建一个版本标签 (如 `git tag v1.2.3`) 并将其推送到 GitHub 后，部署才会进行。
+#    - 步骤:
+#      1. Checkout code: 拉取与触发标签对应的代码版本。
+#      2. Set up Docker Buildx: 设置 Docker Buildx，用于增强构建能力。
+#      3. Log in to Docker Hub (或者您的其他 Registry): 登录到您选择的 Docker 镜像仓库。
+#         - 请将 `DOCKER_HUB_USERNAME` 和 `DOCKER_HUB_TOKEN` 替换为您在 GitHub Secrets 中配置的实际 Secret 名称。
+#         - 如果您使用私有 Registry 或非 Docker Hub 的 Registry (如 GHCR, ECR, ACR)，
+#           请取消注释并设置 `registry:` 参数。
+#      4. Extract metadata (tags, labels) for Docker: 自动为 Docker 镜像生成合适的标签 (如版本号标签、latest 标签等) 和元数据。
+#         - 请将 `YOUR_DOCKER_USERNAME/gaokao-rag` 替换为您的实际镜像名称路径。
+#      5. Build and push Docker image: 使用项目根目录下的 `Dockerfile` 构建镜像，并将其推送到配置的镜像仓库。
+#         - `context: .`: Docker 构建上下文为项目根目录。
+#         - `push: true`: 构建成功后推送镜像。
+#         - `tags: ${{ steps.meta.outputs.tags }}`: 使用上一步生成的标签。
+#         - `labels: ${{ steps.meta.outputs.labels }}`: 使用上一步生成的元数据标签。
+#         - `cache-from`/`cache-to`: 配置 GitHub Actions 的构建缓存，以加速后续构建。
+#      6. Deploy to production via SSH: 使用 SSH 连接到您的生产服务器执行部署命令。
+#         - `host`, `username`, `key`, `port`: 这些参数需要您替换占位符 (`YOUR_PROD_SERVER_HOST`)
+#           并使用 GitHub Secrets (`PROD_SSH_USER`, `PROD_SSH_KEY`, `PROD_SSH_PORT`)。
+#         - `script`: 在服务器上执行的脚本。
+#           - `cd /srv/gaokao-rag`: 进入您在服务器上部署此项目的目录 (请替换为您的实际路径)。
+#           - `IMAGE_TAG=$(echo '${{ steps.meta.outputs.tags }}' | cut -d',' -f1)`: 从 Docker 元数据获取第一个标签 (通常是版本标签)。
+#           - `docker pull $IMAGE_TAG`: 从镜像仓库拉取最新构建的镜像。
+#           - `export RAG_IMAGE=$IMAGE_TAG`: 将镜像标签导出为环境变量，以便 Docker Compose 文件可以使用它。
+#           - `docker compose -f docker-compose.yml up -d`:
+#             使用位于当前目录 (例如 `/srv/gaokao-rag`) 的 `docker-compose.yml` 文件来启动或更新服务。
+#             `-d` 表示在后台运行。
+#             为了让 Docker Compose 使用新的镜像，您的 `docker-compose.yml` 文件中的服务定义应该引用这个环境变量，
+#             例如: `image: YOUR_DOCKER_USERNAME/gaokao-rag:${RAG_IMAGE}`。
+#             或者，您可以使用更具体的命令如 `docker compose up -d --force-recreate your_service_name` 来确保服务使用新镜像重建。
+#
+# 重要配置提醒:
+#  - **Dockerfile**: 确保您的项目根目录下有一个有效的 `Dockerfile`。
+#  - **GitHub Secrets**: 在您的 GitHub 项目的 "Settings" -> "Secrets and variables" -> "Actions" 中安全地配置所有必要的 Secrets
+#    (`DOCKER_HUB_USERNAME`, `DOCKER_HUB_TOKEN`, `PROD_SSH_USER`, `PROD_SSH_KEY`, `PROD_SSH_PORT`)。
+#  - **占位符**: 仔细检查此 YAML 文件，并将所有大写占位符 (如 `YOUR_DOCKER_USERNAME`, `YOUR_PROD_SERVER_HOST`)
+#    替换为您的特定配置。
+#  - **服务器端 Docker Compose**: 确保生产服务器上已安装 Docker 和 Docker Compose，并且您的
+#    `docker-compose.yml` 文件已正确配置并位于脚本中指定的路径。 

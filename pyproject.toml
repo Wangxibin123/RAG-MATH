@@ -1,0 +1,73 @@
+# ---------- pyproject.toml ----------
+[build-system]
+# hatchling 1.18+ 支持 include/exclude、package-data 等特性
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gaokao-rag"
+version = "1.1.0"                # 记得每次正式发版自增
+description = "Retrieval-Augmented Generation module for Gaokao math problems"
+readme = "README.md"             # PyPI / pip install -v 会显示
+license = { file = "LICENSE" }   # 放一份 MIT 或 Apache-2.0 等
+requires-python = ">=3.9"
+authors = [
+  { name = "YourName", email = "you@example.com" }
+]
+keywords = ["RAG", "vector-search", "gaokao", "milvus", "faiss"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# --- 运行时依赖 ---
+dependencies = [
+  "torch>=2.2",
+  "sentence-transformers>=2.7",
+  "transformers>=4.40",
+  "huggingface-hub>=0.23",
+  "pandas>=2.2",
+  "openpyxl>=3.1",
+  "pymilvus>=2.4",
+  "regex",
+  "tqdm",
+  "faiss-cpu>=1.7.0",
+  "colorama>=0.4.6",
+  "fastapi>=0.110",          # 如果用到 REST API
+  "uvicorn>=0.28",
+]
+
+# --- 可选依赖: GPU 版 Faiss 等 ---
+[project.optional-dependencies]
+gpu = ["faiss-gpu>=1.7.3"]
+dev = ["black", "isort", "pytest", "build", "twine"]
+
+# --- 命令行脚本 ---
+[project.scripts]
+ragmath = "gaokao_rag.cli:main"
+
+# ---------- Hatch build 细节 ----------
+[tool.hatch.build]
+# 额外打包非 .py 文件：配置、示例数据、Dockerfile…
+include = [
+  "gaokao_rag/**/*",     # 代码
+  "conf/**/*",           # YAML 配置
+  "data/**/*",           # （可选）示例数据
+  "scripts/**/*",        # shell / compose
+  "Dockerfile",
+  "README.md",
+  "LICENSE",
+]
+# 排除单元测试和缓存
+exclude = [
+  "tests/**/*",
+  "**/__pycache__/**/*",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["gaokao_rag"]
+# -------------------------------------

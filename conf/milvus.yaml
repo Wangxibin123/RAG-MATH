@@ -1,0 +1,7 @@
+host: 127.0.0.1
+port: 19530
+collection: gaokao_math_emb
+params:
+  M: 32
+  efConstruction: 200
+  efSearch: 128 

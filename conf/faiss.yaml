@@ -1,0 +1,10 @@
+# FAISS Configuration (Local Mode)
+
+# Path to save/load the FAISS index file
+index_path: "models/faiss_index.bin"
+
+# Dimension of the vectors (should match embed_dim in base.yaml)
+# dimension: 1536 
+
+# Add any other FAISS specific parameters here
+# e.g., nlist for IVF_FLAT, etc. 

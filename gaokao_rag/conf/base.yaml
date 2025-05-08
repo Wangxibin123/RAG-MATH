@@ -1,0 +1,38 @@
+# ───────── Gaokao-RAG 基础配置 ─────────
+device: cpu          # cuda:0 / cpu / mps 任选；无 GPU 就写 cpu
+
+# 选用向量后端：
+#   • milvus → 走独立 Milvus 服务（docker-compose.yml 已定义）
+#   • faiss  → 走本地 FAISS 文件索引
+store: faiss        # ← 切换只改这一行
+
+embed_dim: 0         # 运行时由 embed.py 自动探测并覆盖
+
+topk:
+  recall: 30         # 召回阶段从 Milvus 拿 30 条
+  return: 10         # 最终返回前 10 条
+
+difficulty:
+  default: 20
+  coeff: 0.7         # 0 仅语义分数；1 仅难度分数
+
+# ───────── 备忘 ─────────
+# 当 store=milvus 时，内部流程：
+#   1.  ragmath import
+#        └─ MilvusStore.build() →  Collection.insert() 把向量批量写入
+#           集合名:  gaokao_math_emb（见 conf/milvus.yaml）
+#
+#   2.  ragmath query
+#        └─ MilvusStore.search() →  Collection.search()
+#           Milvus 端完成 HNSW/HYBRID 搜索并返回 top-k id + 距离
+#
+#   如果改为 store=faiss，则执行：
+#       • build() →  faiss.Index.add()
+#       • search() →  faiss.Index.search()
+#   其它逻辑（rerank、difficulty 加权）保持不变。
+#
+#   通过一行配置即可在 “轻量单机 (FAISS)” 与 “分布式服务 (Milvus)”
+#   间切换，业务代码零改动。
+# ─────────────────────────
+
+

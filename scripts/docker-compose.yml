@@ -1,0 +1,43 @@
+# ---------- BEGIN scripts/docker-compose.yml ----------
+version: "3.8"
+
+services:
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - milvus-data:/var/lib/milvus
+    environment:
+      ETCD_USE_EMBED: "true"
+    networks: [rag_net]
+
+  rag:
+    build: ..
+    container_name: rag
+    depends_on:
+      milvus:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      HF_ENDPOINT: https://hf-mirror.com
+    volumes:
+      - ../data:/app/data
+      - ../models:/app/models
+    networks: [rag_net]
+
+volumes:
+  milvus-data:
+
+networks:
+  rag_net:
+    driver: bridge
+# ----------  END  scripts/docker-compose.yml ----------

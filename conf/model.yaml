@@ -1,0 +1,10 @@
+text:
+  repo: HIT-TMG/KaLM-embedding-multilingual-mini-instruct-v1.5
+  local: models/kalm
+math:
+  repo: witiko/mathberta-base
+  local: models/mathberta
+rerank:
+  repo: math-similarity/Bert-MLM_arXiv-MP-class_zbMath
+  local: models/reranker
+hf_mirror: https://hf-mirror.com 
