@@ -64,3 +64,9 @@ local_settings.py
 # 日志文件
 logs/
 *.log
+
+# Microsoft Office temporary files
+~$*.xlsx
+~$*.docx
+~$*.pptx
+.
