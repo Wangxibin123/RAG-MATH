@@ -132,14 +132,23 @@ def query(stem: str, k=None):
     final_sorted = sorted(final_candidates, key=lambda x: x[1], reverse=True)[:k]
     
     # Prepare results
-    result_ids = [i for i, _ in final_sorted]
-    if not result_ids:
-        return []
-        
-    # Ensure all result_ids are in DF before .loc to prevent KeyError
-    # This should be guaranteed by valid_cand_ids check, but as a safeguard:
-    result_ids_in_df = [rid for rid in result_ids if rid in DF.index]
-    if not result_ids_in_df:
-        return []
+    results_with_scores = []
+    for problem_id, score_val in final_sorted: # final_sorted is list of (cid, final_score)
+        if problem_id in DF.index: # Check if id exists in DataFrame index
+            stem_val = DF.loc[problem_id, 'stem']
+            # 也可以在这里添加其他你想从DF中获取的字段
+            # 例如: source_val = DF.loc[problem_id, 'source'] if 'source' in DF.columns else None
+            results_with_scores.append({
+                'id': str(problem_id),      # 确保是字符串
+                'stem': str(stem_val),    # 确保是字符串
+                'score': float(score_val) # 确保是浮点数
+                # 如果添加了其他字段，也在这里加入
+                # 'source': source_val
+            })
+        else:
+            # 这通常不应该发生，因为 final_sorted 中的 id 应该都来自 valid_cand_ids，而 valid_cand_ids 已经检查过存在于 DF.index
+            print(f"Warning: ID {problem_id} from final_sorted not found in DF.index. This indicates a potential data inconsistency. Skipping.")
+    
+    return results_with_scores
 
-    return json.loads(DF.loc[result_ids_in_df].to_json(orient="records", force_ascii=False)) 
+# ----------  END  gaokao_rag/retriever.py ---------- 
