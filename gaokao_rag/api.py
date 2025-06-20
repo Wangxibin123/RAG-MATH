@@ -1,6 +1,7 @@
 # ---------- BEGIN gaokao_rag/api.py ----------
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import json, time
 from typing import List, Dict, Any
@@ -21,6 +22,15 @@ class MatchResponse(BaseModel):
 # --- End Pydantic Models ---
 
 app = FastAPI(title="Gaokao-RAG")
+
+# 添加 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有方法
+    allow_headers=["*"],  # 允许所有头
+)
 
 # --- health ---
 @app.get("/health")
